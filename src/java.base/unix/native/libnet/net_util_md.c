@@ -49,6 +49,10 @@
 #include <sys/sysctl.h>
 #endif
 
+#ifdef __OpenBSD__
+#include <sys/socketvar.h>
+#endif
+
 #include "jvm.h"
 #include "net_util.h"
 

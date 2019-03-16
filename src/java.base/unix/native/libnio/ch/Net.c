@@ -57,9 +57,9 @@
 #endif
 
 /**
- * IPV6_ADD_MEMBERSHIP/IPV6_DROP_MEMBERSHIP may not be defined on OSX and AIX
+ * IPV6_ADD_MEMBERSHIP/IPV6_DROP_MEMBERSHIP may not be defined on OSX, BSD and AIX
  */
-#if defined(__APPLE__) || defined(_AIX)
+#if defined(_ALLBSD_SOURCE) || defined(_AIX)
   #ifndef IPV6_ADD_MEMBERSHIP
     #define IPV6_ADD_MEMBERSHIP     IPV6_JOIN_GROUP
     #define IPV6_DROP_MEMBERSHIP    IPV6_LEAVE_GROUP

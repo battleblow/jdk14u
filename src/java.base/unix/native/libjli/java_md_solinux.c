@@ -35,6 +35,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/types.h>
+#ifdef __FreeBSD__
+#include <sys/sysctl.h>
+#endif
 #include "manifest_info.h"
 
 
@@ -268,6 +271,16 @@ RequiresSetenv(const char *jvmpath) {
         return JNI_FALSE;
     }
 #endif /* __linux */
+
+#ifdef _BSDONLY_SOURCE
+    /*
+     * The BSD's (except MacOSX which doesn't include this file), also clear
+     * LD_LIBRARY_PATH when a binary is running setuid or setgid.
+     */
+    if (issetugid()) {
+     return JNI_FALSE;
+    }
+#endif /* _BSDONLY_SOURCE */
 
     /*
      * Prevent recursions. Since LD_LIBRARY_PATH is the one which will be set by
@@ -640,8 +653,9 @@ LoadJavaVM(const char *jvmpath, InvocationFunctions *ifn)
  * onwards the filename returned in DL_info structure from dladdr is
  * an absolute pathname so technically realpath isn't required.
  * On Linux we read the executable name from /proc/self/exe.
- * As a fallback, and for platforms other than Solaris and Linux,
- * we use FindExecName to compute the executable name.
+ * On FreeBSD, we get the executable name via sysctl(3).
+ * As a fallback, and for platforms other than Solaris, Linux, and
+ * FreeBSD we use FindExecName to compute the executable name.
  */
 const char*
 SetExecname(char **argv)
@@ -678,7 +692,17 @@ SetExecname(char **argv)
             exec_path = JLI_StringDup(buf);
         }
     }
-#else /* !__solaris__ && !__linux__ */
+#elif defined(__FreeBSD__)
+    {
+        char buf[PATH_MAX+1];
+        int name[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+        size_t len = sizeof(buf);
+        if (sysctl(name, 4, buf, &len, NULL, 0) == 0 && len > 0) {
+            buf[len] = '\0';
+            exec_path = JLI_StringDup(buf);
+        }
+    }
+#else /* !__solaris__ && !__linux__ && !__FreeBSD__ */
     {
         /* Not implemented */
     }
