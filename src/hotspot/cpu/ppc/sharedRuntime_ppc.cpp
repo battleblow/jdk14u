@@ -48,7 +48,9 @@
 #include "opto/runtime.hpp"
 #endif
 
+#ifndef _ALLBSD_SOURCE
 #include <alloca.h>
+#endif
 
 #define __ masm->
 
