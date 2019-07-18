@@ -369,6 +369,7 @@ Java_sun_nio_ch_FileDispatcherImpl_setDirect0(JNIEnv *env, jclass clazz,
         result = (int)file_stat.f_frsize;
     }
 #else
+    JNU_ThrowIOException(env, "DirectIO unsupported");
     result = -1;
 #endif
     return result;
