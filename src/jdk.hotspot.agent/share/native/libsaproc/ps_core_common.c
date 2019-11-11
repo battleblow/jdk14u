@@ -24,7 +24,7 @@
 
 #include <jni.h> // just include something, or else solaris compiler will complain that this file is empty
 
-#if defined(LINUX) || defined(__APPLE__)
+#if defined(LINUX) || defined(__APPLE__) || defined(_ALLBSD_SOURCE)
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -263,15 +263,18 @@ bool read_string(struct ps_prochandle* ph, uintptr_t addr, char* buf, size_t siz
 #define USE_SHARED_SPACES_SYM "UseSharedSpaces"
 #define SHARED_BASE_ADDRESS_SYM "SharedBaseAddress"
 #define LIBJVM_NAME "/libjvm.so"
-#endif
-
-#ifdef __APPLE__
+#elif defined(__APPLE__)
 // mangled name of Arguments::SharedArchivePath
 #define SHARED_ARCHIVE_PATH_SYM "__ZN9Arguments17SharedArchivePathE"
 #define USE_SHARED_SPACES_SYM "_UseSharedSpaces"
 #define SHARED_BASE_ADDRESS_SYM "_SharedBaseAddress"
 #define LIBJVM_NAME "/libjvm.dylib"
+#elif defined(_ALLBSD_SOURCE)
+#define SHARED_ARCHIVE_PATH_SYM "__ZN9Arguments17SharedArchivePathE"
+#define USE_SHARED_SPACES_SYM "UseSharedSpaces"
+#define LIBJVM_NAME "/libjvm.so"
 #endif
+
 
 bool init_classsharing_workaround(struct ps_prochandle* ph) {
   lib_info* lib = ph->libs;
