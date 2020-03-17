@@ -537,7 +537,6 @@ void ShenandoahTraversalGC::main_loop_work(T* cl, jushort* live_data, uint worke
     if (work == 0) {
       // No more work, try to terminate
       ShenandoahSuspendibleThreadSetLeaver stsl(sts_yield && ShenandoahSuspendibleWorkers);
-      ShenandoahTerminationTimingsTracker term_tracker(worker_id);
       ShenandoahTerminatorTerminator tt(_heap);
 
       if (terminator->offer_termination(&tt)) return;
@@ -557,7 +556,6 @@ void ShenandoahTraversalGC::concurrent_traversal_collection() {
   if (!_heap->cancelled_gc()) {
     uint nworkers = _heap->workers()->active_workers();
     task_queues()->reserve(nworkers);
-    ShenandoahTerminationTracker tracker(ShenandoahPhaseTimings::conc_traversal_termination);
 
     ShenandoahTaskTerminator terminator(nworkers, task_queues());
     ShenandoahConcurrentTraversalCollectionTask task(&terminator);
@@ -570,8 +568,6 @@ void ShenandoahTraversalGC::concurrent_traversal_collection() {
 }
 
 void ShenandoahTraversalGC::final_traversal_collection() {
-  _heap->make_parsable(true);
-
   if (!_heap->cancelled_gc()) {
 #if COMPILER2_OR_JVMCI
     DerivedPointerTable::clear();
@@ -582,8 +578,6 @@ void ShenandoahTraversalGC::final_traversal_collection() {
 
     // Finish traversal
     ShenandoahAllRootScanner rp(nworkers, ShenandoahPhaseTimings::final_traversal_gc_work);
-    ShenandoahTerminationTracker term(ShenandoahPhaseTimings::final_traversal_gc_termination);
-
     ShenandoahTaskTerminator terminator(nworkers, task_queues());
     ShenandoahFinalTraversalCollectionTask task(&rp, &terminator);
     _heap->workers()->run_task(&task);
@@ -605,8 +599,13 @@ void ShenandoahTraversalGC::final_traversal_collection() {
     _heap->set_concurrent_traversal_in_progress(false);
     _heap->mark_complete_marking_context();
 
-    fixup_roots();
+    // A rare case, TLAB/GCLAB is initialized from an empty region without
+    // any live data, the region can be trashed and may be uncommitted in later code,
+    // that results the TLAB/GCLAB not usable. Retire them here.
+    _heap->make_parsable(true);
+
     _heap->parallel_cleaning(false);
+    fixup_roots();
 
     _heap->set_has_forwarded_objects(false);
 
@@ -667,11 +666,40 @@ void ShenandoahTraversalGC::final_traversal_collection() {
     if (ShenandoahVerify) {
       _heap->verifier()->verify_after_traversal();
     }
+#ifdef ASSERT
+    else {
+      verify_roots_after_gc();
+    }
+#endif
 
     if (VerifyAfterGC) {
       Universe::verify();
     }
   }
+}
+
+class ShenandoahVerifyAfterGC : public OopClosure {
+private:
+  template <class T>
+  void do_oop_work(T* p) {
+    T o = RawAccess<>::oop_load(p);
+    if (!CompressedOops::is_null(o)) {
+      oop obj = CompressedOops::decode_not_null(o);
+      shenandoah_assert_correct(p, obj);
+      shenandoah_assert_not_in_cset_except(p, obj, ShenandoahHeap::heap()->cancelled_gc());
+      shenandoah_assert_not_forwarded(p, obj);
+    }
+  }
+
+public:
+  void do_oop(narrowOop* p) { do_oop_work(p); }
+  void do_oop(oop* p)       { do_oop_work(p); }
+};
+
+void ShenandoahTraversalGC::verify_roots_after_gc() {
+  ShenandoahRootVerifier verifier;
+  ShenandoahVerifyAfterGC cl;
+  verifier.oops_do(&cl);
 }
 
 class ShenandoahTraversalFixRootsClosure : public OopClosure {
@@ -707,7 +735,8 @@ public:
   void work(uint worker_id) {
     ShenandoahParallelWorkerSession worker_session(worker_id);
     ShenandoahTraversalFixRootsClosure cl;
-    _rp->strong_roots_do(worker_id, &cl);
+    ShenandoahForwardedIsAliveClosure is_alive;
+    _rp->roots_do(worker_id, &is_alive, &cl);
   }
 };
 

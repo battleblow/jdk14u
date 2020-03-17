@@ -203,18 +203,6 @@ ShenandoahRootUpdater::ShenandoahRootUpdater(uint n_workers, ShenandoahPhaseTimi
   _thread_roots(n_workers > 1) {
 }
 
-void ShenandoahRootUpdater::strong_roots_do(uint worker_id, OopClosure* oops_cl) {
-  CodeBlobToOopClosure update_blobs(oops_cl, CodeBlobToOopClosure::FixRelocations);
-  CLDToOopClosure clds(oops_cl, ClassLoaderData::_claim_strong);
-
-  _serial_roots.oops_do(oops_cl, worker_id);
-  _vm_roots.oops_do(oops_cl, worker_id);
-
-  _thread_roots.oops_do(oops_cl, NULL, worker_id);
-  _cld_roots.cld_do(&clds, worker_id);
-  _code_roots.code_blobs_do(&update_blobs, worker_id);
-}
-
 ShenandoahRootAdjuster::ShenandoahRootAdjuster(uint n_workers, ShenandoahPhaseTimings::Phase phase) :
   ShenandoahRootProcessor(phase),
   _thread_roots(n_workers > 1) {
@@ -265,18 +253,4 @@ void ShenandoahRootAdjuster::roots_do(uint worker_id, OopClosure* oops) {
    _serial_weak_roots.weak_oops_do(oops, 0);
    _weak_roots.oops_do<OopClosure>(oops, 0);
    _dedup_roots.oops_do(&always_true, oops, 0);
- }
-
- void ShenandoahHeapIterationRootScanner::strong_roots_do(OopClosure* oops) {
-   assert(Thread::current()->is_VM_thread(), "Only by VM thread");
-   // Must use _claim_none to avoid interfering with concurrent CLDG iteration
-   CLDToOopClosure clds(oops, ClassLoaderData::_claim_none);
-   MarkingCodeBlobClosure code(oops, !CodeBlobToOopClosure::FixRelocations);
-   ShenandoahParallelOopsDoThreadClosure tc_cl(oops, &code, NULL);
-   ResourceMark rm;
-
-   _serial_roots.oops_do(oops, 0);
-   _vm_roots.oops_do(oops, 0);
-   _cld_roots.always_strong_cld_do(&clds, 0);
-   _thread_roots.threads_do(&tc_cl, 0);
  }
